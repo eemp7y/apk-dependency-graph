@@ -90,7 +90,10 @@ python -m unittest discover -s tests -v
 Локальная история начинается коммитом:
 `feat(config): implement stage 1 YAML configuration`.
 Для сдачи нужно создать публичный репозиторий в выбранном Git-сервисе
-и отправить туда этот проект. Адрес удалённого репозитория пока не задан.
+и отправить туда этот проект.
+
+Публичный репозиторий проекта:
+[eemp7y/apk-dependency-graph](https://github.com/eemp7y/apk-dependency-graph).
 
 ## Следующие этапы
 
