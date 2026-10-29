@@ -7,6 +7,7 @@ import sys
 
 from src.config import ConfigError, load_config
 from src.graph import analyze_graph
+from src.order import loading_order
 from src.repository import RepositoryError, get_package
 
 
@@ -68,7 +69,24 @@ def parse_arguments(argv):
         "--direct", action="store_true",
         help="Только прямые зависимости из Alpine (этап 2)",
     )
+    modes.add_argument(
+        "--order", action="store_true",
+        help="Порядок загрузки: зависимости перед пакетом (этап 4)",
+    )
     return parser.parse_args(argv)
+
+
+def show_order(config, config_path):
+    """Вывести полный или явно обозначенный частичный порядок загрузки."""
+    graph = analyze_graph(config, config_path)
+    ordered = loading_order(graph)
+    if any(depth >= config.max_depth for depth in graph.depths.values()):
+        print("Внимание: достигнута граница глубины.")
+        print("Порядок только для построенной части графа; за границей")
+        print("могут быть дополнительные зависимости и циклы.")
+    print("Порядок загрузки (зависимости раньше пакета):")
+    for position, package in enumerate(ordered, 1):
+        print(f"  {position}. {package}")
 
 
 def main(argv=None):
@@ -84,6 +102,8 @@ def main(argv=None):
             show_config(config)
         elif args.direct:
             show_dependencies(config)
+        elif args.order:
+            show_order(config, args.config)
         else:
             show_graph(config, args.config)
     except RepositoryError as error:
