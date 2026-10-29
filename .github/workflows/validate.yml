@@ -23,3 +23,24 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Compare order with real apk in Alpine
         run: python -m tools.compare_apk
+      - name: Create three real Mermaid diagrams and test cases
+        run: python -m tools.create_demos
+      - name: Prepare diagram verification
+        run: |
+          if ! command -v dot >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y graphviz
+          fi
+          npm install --prefix "$RUNNER_TEMP/visual-check" playwright@1.56.1
+      - name: Compare diagrams with real apk dot
+        run: python -m tools.compare_visualization
+      - name: Render Mermaid, verify topology and SVG export
+        run: |
+          export PLAYWRIGHT_MODULE="$RUNNER_TEMP/visual-check/node_modules/playwright"
+          node tools/render_graphs.cjs
+      - name: Save diagrams and reference images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5-diagrams
+          path: generated/demos/

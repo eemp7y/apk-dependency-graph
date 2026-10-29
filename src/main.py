@@ -9,6 +9,7 @@ from src.config import ConfigError, load_config
 from src.graph import analyze_graph
 from src.order import loading_order
 from src.repository import RepositoryError, get_package
+from src.visualization import open_visualization, write_visualization
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.yaml"
@@ -73,7 +74,32 @@ def parse_arguments(argv):
         "--order", action="store_true",
         help="Порядок загрузки: зависимости перед пакетом (этап 4)",
     )
-    return parser.parse_args(argv)
+    modes.add_argument(
+        "--visualize", action="store_true", help="Открыть граф Mermaid",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_CONFIG.parent / "generated",
+        help="Папка для graph.mmd и graph.html",
+    )
+    parser.add_argument(
+        "--no-open", action="store_true", help="Не открывать браузер",
+    )
+    args = parser.parse_args(argv)
+    if args.no_open and not args.visualize:
+        parser.error("--no-open используется только с --visualize")
+    return args
+
+
+def show_visualization(config, args):
+    """Сохранить диаграмму и открыть изображение в браузере."""
+    graph = analyze_graph(config, args.config)
+    mermaid_path, html_path = write_visualization(
+        graph, config.max_depth, args.output_dir,
+    )
+    print(f"Mermaid: {mermaid_path}")
+    print(f"Изображение в браузере: {html_path}")
+    if not args.no_open and not open_visualization(html_path):
+        print("Откройте HTML-файл вручную в браузере.")
 
 
 def show_order(config, config_path):
@@ -104,6 +130,8 @@ def main(argv=None):
             show_dependencies(config)
         elif args.order:
             show_order(config, args.config)
+        elif args.visualize:
+            show_visualization(config, args)
         else:
             show_graph(config, args.config)
     except RepositoryError as error:

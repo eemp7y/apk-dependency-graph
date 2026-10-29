@@ -1,10 +1,11 @@
 # Граф зависимостей Alpine Linux: вариант 1
 
 Практическая работа по конфигурационному управлению. Язык: Python.
-Реализованы этапы 1-4: проверка YAML-настроек, получение прямых
+Реализованы этапы 1-5: проверка YAML-настроек, получение прямых
 зависимостей и построение графа итеративным DFS с ограничением глубины.
 Поддерживаются реальные репозитории Alpine, локальные учебные графы
 и порядок загрузки, в котором зависимости предшествуют своим пользователям.
+Визуализация строится на Mermaid и открывается в браузере.
 Для чтения YAML используется PyYAML. Библиотеки получения зависимостей
 пакетов не используются.
 
@@ -270,6 +271,82 @@ python -m tools.compare_apk
 приложение не получает через него информацию о зависимостях.
 На Windows для обычной работы программы Docker и Linux не требуются.
 
+## Пятый этап: визуализация Mermaid
+
+```console
+py -m src.main --visualize
+```
+
+Программа сохранит `generated/graph.mmd` и `generated/graph.html`, затем
+откроет изображение в браузере. Синий узел - исходный пакет, красные узлы
+входят в обнаруженный цикл, пунктир обозначает границу глубины.
+Стрелка A → B означает, что A зависит от B. Версии реальных пакетов
+показаны в подписях. Отдельные пакеты без зависимостей также видны.
+
+На странице есть масштабирование, подгонка по ширине, исходный текст
+Mermaid и кнопка «Сохранить SVG». Сохранённое SVG-изображение открывается
+без интернета. Для первой отрисовки HTML требуется доступ к
+`cdn.jsdelivr.net`: оттуда браузер загружает Mermaid 11.12.0.
+Содержимое графа обрабатывается в браузере, а не отправляется в API
+рендеринга. При недоступности библиотеки на странице остаётся исходник
+и появляется сообщение об ошибке загрузки.
+
+Для сохранения без открытия браузера:
+
+```console
+py -m src.main --visualize --no-open --output-dir generated/my-graph
+```
+
+Путь `--output-dir` относительно текущей рабочей папки. Повторный запуск
+с той же папкой обновляет `graph.mmd` и `graph.html`. Папка по умолчанию
+`generated/` всегда находится в корне проекта и исключена из Git.
+Если браузер не открылся автоматически, откройте напечатанный HTML-путь
+вручную. `--no-open` применяется только вместе с `--visualize`.
+
+### Три реальных пакета
+
+Запускайте по очереди; результаты сохраняются в разных папках:
+
+```console
+py -m src.main --visualize --output-dir generated/busybox
+py -m src.main --visualize --config examples/config-zlib.yaml --output-dir generated/zlib
+py -m src.main --visualize --config examples/config-curl.yaml --output-dir generated/curl
+```
+
+Для тестового цикла, без скачивания репозитория:
+
+```console
+py -m src.main --visualize --config examples/config-cycle.yaml
+```
+
+В учебном режиме интернет требуется только браузеру для загрузки Mermaid,
+сам граф читается из локального YAML. Циклы визуализируются без ошибки;
+ошибка на цикле выдаётся только в режиме строгого порядка `--order`.
+
+### Сравнение со штатной визуализацией
+
+В GitHub Actions генерируются диаграммы busybox, zlib и curl. Затем
+запускается настоящий `apk dot` в Alpine, его DOT сохраняется и превращается
+в SVG через Graphviz. Направленные рёбра сравниваются по именам и версиям
+пакетов. Различия геометрии, цвета и расположения узлов не считаются
+различиями зависимостей. Исходные DOT, Mermaid, SVG, снимки браузера
+и `comparison.json` доступны в артефакте `stage5-diagrams` успешной проверки.
+
+В Linux с Docker, Graphviz, Node.js, Playwright и Chrome проверку можно
+повторить отдельно:
+
+```console
+python -m tools.create_demos
+python -m tools.compare_visualization
+node tools/render_graphs.cjs
+```
+
+Браузерная проверка сверяет число отображённых узлов и рёбер с исходным
+графом, проверяет отсутствие заливки у линий, масштабирование и загрузку
+SVG. Дополнительные средства проверки не нужны для обычного запуска
+Python-программы в PyCharm. Все готовые изображения являются результатами
+генерации и не добавляются в Git-репозиторий.
+
 ## Демонстрация ошибок
 
 По очереди меняйте один параметр в `config.yaml` и запускайте приложение:
@@ -311,12 +388,14 @@ py -m src.main --show-config
 py -m unittest discover -s tests -v
 ```
 
-78 тестов проверяют конфигурацию, загрузку и разбор индекса, выбор
+94 теста проверяют конфигурацию, загрузку и разбор индекса, выбор
 версий, виртуальные зависимости, DFS, глубину, циклы и ошибки.
 Также проверяются порядок загрузки, отсутствие дубликатов, цикл с готовым
 листом и предупреждение о частичном графе. Есть цепочка из 1501 узла
 для проверки отсутствия рекурсивного обхода.
 Автоматические тесты используют искусственные данные и не требуют интернета.
+Дополнительно проверяются Mermaid, экранирование подписей, создание HTML,
+открытие браузера, режим `--no-open` и сравнение направленных рёбер.
 
 ## Устройство кода
 
@@ -325,9 +404,11 @@ py -m unittest discover -s tests -v
   проверяет пять параметров; `load_config` объединяет чтение и проверку.
   `Config` хранит настройки, `ConfigError` обозначает ошибку настроек.
 - `src/main.py`: `parse_arguments` разбирает `--config`, `--show-config`,
-  `--direct`, `--order`; `show_config` выводит настройки,
+  `--direct`, `--order`, `--visualize`, `--output-dir`, `--no-open`;
+  `show_config` выводит настройки,
   `show_dependencies` - прямые зависимости, `show_graph` - граф,
-  `show_order` - порядок загрузки; `main` управляет запуском и ошибками.
+  `show_order` - порядок загрузки, `show_visualization` сохраняет и открывает
+  изображение; `main` управляет запуском и ошибками.
 - `src/repository.py`: `index_url` строит адрес индекса, `download_index`
   скачивает архив, `unpack_index` читает его, `parse_record` и `parse_index`
   разбирают метаданные, `find_package` выбирает точную версию,
@@ -346,17 +427,28 @@ py -m unittest discover -s tests -v
   проверяет ограничение.
 - `src/order.py`: `loading_order` выполняет топологическую сортировку
   зависимостей, отклоняет циклы и ссылки на неописанные узлы.
+- `src/visualization.py`: `mermaid_label` экранирует подписи, `to_mermaid`
+  описывает диаграмму, `graph_metadata` готовит сведения для страницы,
+  `write_visualization` сохраняет файлы, `open_visualization` открывает HTML.
+- `src/templates/graph.html`: интерфейс просмотра и экспорт SVG в браузере.
 - `tests/test_config.py`: проверки корректных данных и ошибок.
 - `tests/test_repository.py`: проверки второго этапа без доступа к сети.
 - `tests/test_graph.py`: проверки DFS, глубины, циклов и учебных файлов.
 - `tests/test_resolver.py`: проверки разрешения имён и сравнения версий.
 - `tests/test_order.py`: свойства порядка загрузки и его командная строка.
+- `tests/test_visualization.py`: Mermaid, HTML, безопасные подписи и CLI.
+- `tests/test_visual_comparison.py`: нормализация и сравнение DOT-рёбер.
 - `tools/compare_apk.py`: `our_graph` строит граф, `real_apk_order` получает
   эталонный план симуляции, `explain_install_if` проверяет условия дополнений,
   `compare_order` сравнивает результаты,
   `main` запускает сравнение трёх пакетов.
+- `tools/create_demos.py`: создание трёх реальных и пяти учебных диаграмм.
+- `tools/compare_visualization.py`: `real_apk_dot` получает эталонный DOT,
+  `parse_dot_edges` нормализует его рёбра, `compare_edges` сравнивает графы,
+  `save_reference` сохраняет DOT/SVG, `main` запускает проверку трёх пакетов.
+- `tools/render_graphs.cjs`: отрисовка и проверка Mermaid в отдельном браузере.
 - `.github/workflows/validate.yml`: автоматические тесты и сравнение с apk.
-- `examples/`: пять конфигураций учебных графов.
+- `examples/`: пять учебных графов и реальные примеры zlib/curl.
 
 ## Сохранение этапа в Git
 
@@ -368,10 +460,19 @@ py -m unittest discover -s tests -v
 `feat(graph): add iterative DFS with depth limits and test repositories`.
 Четвёртый этап сохраняется коммитом:
 `feat(order): add dependency loading order and real apk comparison`.
+Пятый этап сохраняется коммитом:
+`feat(visualization): add Mermaid viewer and apk dot comparison`.
 
 Публичный репозиторий проекта:
 [eemp7y/apk-dependency-graph](https://github.com/eemp7y/apk-dependency-graph).
 
-## Следующие этапы
+## Команды для демонстрации на защите
 
-5. Формирование Mermaid и вывод изображения графа.
+```console
+py -m src.main --show-config
+py -m src.main --direct
+py -m src.main --config examples/config-cycle.yaml
+py -m src.main --order --config examples/config-test.yaml
+py -m src.main --visualize
+py -m unittest discover -s tests -v
+```

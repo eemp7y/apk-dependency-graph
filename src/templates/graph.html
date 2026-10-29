@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Граф зависимостей</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; color: #172033; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f3f6fb; }
+    main { max-width: 1480px; margin: auto; padding: 40px 32px; }
+    .eyebrow { color: #64748b; font-size: 11px; letter-spacing: .14em; font-weight: 700; }
+    h1 { font-size: 32px; letter-spacing: -.03em; margin: 16px 0 8px; }
+    .subtitle { color: #64748b; line-height: 1.6; margin: 0; }
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 24px 0; }
+    .stat { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 20px; }
+    .stat strong { font-size: 24px; margin-right: 10px; }
+    .stat span { color: #64748b; font-size: 13px; }
+    .panel { background: white; border: 1px solid #dde4ee; border-radius: 16px; overflow: hidden; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px;
+      padding: 20px 24px; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+    #root { font-weight: 700; overflow-wrap: anywhere; }
+    .hint { font-size: 12px; color: #64748b; margin-top: 6px; }
+    .buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    button { background: white; color: #334155; border: 1px solid #cbd5e1; border-radius: 8px;
+      padding: 9px 13px; font-size: 13px; cursor: pointer; }
+    button:hover { background: #eff6ff; }
+    button:disabled { cursor: wait; opacity: .5; }
+    button.primary { color: white; background: #1d4ed8; border-color: #1d4ed8; }
+    #scale { min-width: 44px; text-align: center; font-size: 12px; color: #64748b; }
+    #viewport { overflow: auto; min-height: 330px; max-height: 72vh; background-color: #fcfdff;
+      background-image: radial-gradient(#dbe2ed 1px, transparent 1px); background-size: 20px 20px; }
+    #diagram { display: flex; justify-content: center; width: max-content; min-width: 100%; padding: 32px; }
+    #diagram svg { max-width: none !important; flex-shrink: 0; }
+    .legend { display: flex; gap: 24px; flex-wrap: wrap; padding: 16px 24px; font-size: 12px;
+      border-top: 1px solid #e2e8f0; color: #64748b; }
+    .key { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 3px; }
+    .blue { background: #1d4ed8; } .red { background: #e11d48; } .amber { border: 2px dashed #d97706; }
+    #status { color: #64748b; padding: 18px 24px; font-size: 13px; line-height: 1.6; }
+    .notice { padding: 14px 18px; border-radius: 10px; margin: 16px 0; line-height: 1.6; font-size: 13px; }
+    .warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .danger { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
+    details { margin-top: 22px; border: 1px solid #dde4ee; background: white; border-radius: 12px; padding: 18px; }
+    summary { cursor: pointer; font-size: 13px; color: #475569; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; color: #334155; }
+    footer { font-size: 12px; color: #64748b; margin-top: 20px; line-height: 1.6; }
+    [hidden] { display: none !important; }
+    @media (max-width: 700px) { main { padding: 24px 14px; } h1 { font-size: 26px; }
+      .toolbar { padding: 16px; } .stat { padding: 12px; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">КОНФИГУРАЦИОННОЕ УПРАВЛЕНИЕ / ВАРИАНТ 1</div>
+  <h1>Граф зависимостей</h1>
+  <p class="subtitle">От выбранного пакета — ко всем необходимым ему зависимостям.</p>
+  <section class="stats" aria-label="Сведения о графе">
+    <div class="stat"><strong id="nodes">—</strong><span>пакетов</span></div>
+    <div class="stat"><strong id="edges">—</strong><span>связей</span></div>
+    <div class="stat"><strong id="depth">—</strong><span>максимальная глубина</span></div>
+    <div class="stat"><strong id="cycles">—</strong><span>найденных циклов</span></div>
+  </section>
+  <div id="partial" class="notice warning" hidden>
+    Достигнута граница глубины. Связи за ней не показаны; там могут быть дополнительные зависимости и циклы.
+  </div>
+  <div id="cycleNotice" class="notice danger" hidden></div>
+  <section class="panel" aria-label="Изображение графа">
+    <div class="toolbar">
+      <div><div id="root"></div><div class="hint">A → B означает: пакет A зависит от B.</div></div>
+      <div class="buttons">
+        <button id="minus" aria-label="Уменьшить" disabled>−</button>
+        <span id="scale">100%</span>
+        <button id="plus" aria-label="Увеличить" disabled>+</button>
+        <button id="fit" disabled>По размеру</button>
+        <button id="download" class="primary" disabled>Сохранить SVG</button>
+      </div>
+    </div>
+    <div id="status" role="status">Загружаем Mermaid и строим изображение…</div>
+    <div id="viewport"><div id="diagram"></div></div>
+    <div class="legend">
+      <span><i class="key blue"></i>Исходный пакет</span>
+      <span><i class="key red"></i>Участник цикла</span>
+      <span><i class="key amber"></i>Граница глубины</span>
+    </div>
+  </section>
+  <details><summary>Исходный текст Mermaid</summary><pre id="source"></pre></details>
+  <footer>Изображение строится локально в браузере. Для загрузки библиотеки Mermaid нужен интернет.
+    После сохранения SVG его можно открывать без интернета.</footer>
+</main>
+<script id="graph-data" type="application/json">{{DATA}}</script>
+<script type="module">
+  const data = JSON.parse(document.getElementById('graph-data').textContent);
+  const byId = id => document.getElementById(id);
+  for (const key of ['nodes', 'edges']) byId(key).textContent = data[key];
+  byId('depth').textContent = data.maxDepth;
+  byId('cycles').textContent = data.cycles.length;
+  byId('root').textContent = data.root;
+  byId('source').textContent = data.source;
+  byId('partial').hidden = !data.partial;
+  if (data.cycles.length) {
+    byId('cycleNotice').hidden = false;
+    byId('cycleNotice').textContent = 'Найдены циклы: ' + data.cycles.join('; ');
+  }
+  let svg, naturalWidth, naturalHeight, scale = 1;
+  function setScale(value) {
+    scale = Math.min(4, Math.max(.1, value));
+    svg.style.width = `${naturalWidth * scale}px`;
+    svg.style.height = `${naturalHeight * scale}px`;
+    byId('scale').textContent = `${Math.round(scale * 100)}%`;
+  }
+  function fit() { setScale(Math.min(1, (byId('viewport').clientWidth - 64) / naturalWidth)); }
+  function download() {
+    const copy = svg.cloneNode(true);
+    copy.style.width = `${naturalWidth}px`;
+    copy.style.height = `${naturalHeight}px`;
+    copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const blob = new Blob([new XMLSerializer().serializeToString(copy)], {type: 'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'dependency-graph.svg';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  try {
+    const {default: mermaid} = await import(
+      'https://cdn.jsdelivr.net/npm/mermaid@11.12.0/dist/mermaid.esm.min.mjs'
+    );
+    mermaid.initialize({startOnLoad: false, securityLevel: 'strict', theme: 'base',
+      fontFamily: 'Arial, sans-serif', themeVariables: {
+        primaryColor: '#eff6ff', primaryTextColor: '#172033', primaryBorderColor: '#93b4ed',
+        lineColor: '#94a3b8', fontSize: '14px'},
+      flowchart: {htmlLabels: false, curve: 'basis', nodeSpacing: 28, rankSpacing: 58}});
+    const rendered = await mermaid.render('dependency-graph', data.source);
+    byId('diagram').innerHTML = rendered.svg;
+    svg = byId('diagram').querySelector('svg');
+    svg.setAttribute('aria-label', `Граф зависимостей ${data.root}`);
+    const bounds = svg.viewBox.baseVal;
+    naturalWidth = bounds.width;
+    naturalHeight = bounds.height;
+    byId('minus').onclick = () => setScale(scale / 1.2);
+    byId('plus').onclick = () => setScale(scale * 1.2);
+    byId('fit').onclick = fit;
+    byId('download').onclick = download;
+    for (const button of document.querySelectorAll('button')) button.disabled = false;
+    fit();
+    byId('status').hidden = true;
+    document.documentElement.dataset.rendered = 'true';
+  } catch (error) {
+    byId('status').textContent = 'Не удалось построить изображение. Проверьте доступ к cdn.jsdelivr.net. ' +
+      'Исходный Mermaid сохранён ниже и в файле graph.mmd. Ошибка: ' + error.message;
+    document.documentElement.dataset.rendered = 'error';
+  }
+</script>
+</body>
+</html>
