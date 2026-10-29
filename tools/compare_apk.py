@@ -11,11 +11,13 @@ from src.resolver import Resolver, choose_candidate, package_label
 
 
 REPOSITORY = "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/"
+APK_REPOSITORY = REPOSITORY.rstrip("/").rsplit("/", 1)[0]
 PACKAGES = ("busybox", "zlib", "curl")
 COMPARISON_DEPTH = 100
 SIMULATION = r"^\(\d+/\d+\) Installing (\S+) \(([^)]+)\)"
 APK_SCRIPT = r'''
 root=$(mktemp -d)
+apk --version
 mkdir -p "$root/etc/apk" "$root/lib/apk/db" "$root/var/cache/apk"
 cp -R /etc/apk/keys "$root/etc/apk/keys"
 printf '%s\n' "$CHECK_REPOSITORY" > "$root/etc/apk/repositories"
@@ -49,7 +51,7 @@ def real_apk_order(package):
     """Получить план apk в пустом корне контейнера без установки пакетов."""
     command = [
         "docker", "run", "--rm", "--platform", "linux/amd64",
-        "-e", f"CHECK_REPOSITORY={REPOSITORY}",
+        "-e", f"CHECK_REPOSITORY={APK_REPOSITORY}",
         "-e", f"CHECK_PACKAGE={package.name}={package.version}",
         "alpine:3.20", "sh", "-ec", APK_SCRIPT,
     ]
