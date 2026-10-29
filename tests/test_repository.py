@@ -146,7 +146,7 @@ class RepositoryTests(unittest.TestCase):
         """Тестовый режим не обращается к URL вместо локального файла."""
         config = Config("A", "repo.yaml", True, "1.0", 3)
         with patch("src.repository.urlopen") as opener:
-            with self.assertRaisesRegex(RepositoryError, "этапе 3"):
+            with self.assertRaisesRegex(RepositoryError, "без --direct"):
                 get_package(config)
             opener.assert_not_called()
 
@@ -156,7 +156,7 @@ class RepositoryTests(unittest.TestCase):
         output = io.StringIO()
         with patch("src.main.get_package", return_value=package):
             with redirect_stdout(output):
-                code = main([])
+                code = main(["--direct"])
         self.assertEqual(code, 0)
         self.assertIn("Версия: 1.0", output.getvalue())
         for dependency in package.dependencies:
@@ -167,7 +167,7 @@ class RepositoryTests(unittest.TestCase):
         output = io.StringIO()
         with patch("src.main.get_package", return_value=Package("A", "1", ())):
             with redirect_stdout(output):
-                self.assertEqual(main([]), 0)
+                self.assertEqual(main(["--direct"]), 0)
         self.assertIn("  нет", output.getvalue())
 
     def test_cli_repository_failure(self):
@@ -175,7 +175,7 @@ class RepositoryTests(unittest.TestCase):
         output = io.StringIO()
         with patch("src.main.get_package", side_effect=RepositoryError("404")):
             with redirect_stderr(output):
-                code = main([])
+                code = main(["--direct"])
         self.assertEqual(code, 1)
         self.assertIn("Ошибка репозитория: 404", output.getvalue())
 

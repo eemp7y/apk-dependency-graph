@@ -23,6 +23,8 @@ class Package:
     name: str
     version: str
     dependencies: tuple[str, ...]
+    provides: tuple[str, ...] = ()
+    provider_priority: int = 0
 
 
 def index_url(repository):
@@ -77,13 +79,22 @@ def parse_record(record):
         item for item in fields.get("D", "").split()
         if not item.startswith("!")
     )
-    return Package(fields["P"], fields["V"], dependencies)
+    try:
+        priority = int(fields.get("k", "0"))
+    except ValueError as error:
+        raise RepositoryError("Некорректный приоритет поставщика.") from error
+    return Package(
+        fields["P"], fields["V"], dependencies,
+        tuple(fields.get("p", "").split()), priority,
+    )
 
 
 def parse_index(text):
     """Разобрать записи пакетов, разделённые пустыми строками."""
     records = text.replace("\r\n", "\n").strip().split("\n\n")
-    packages = [parse_record(record) for record in records if record.strip()]
+    packages = [
+        parse_record(record.strip()) for record in records if record.strip()
+    ]
     if not packages:
         raise RepositoryError("Индекс APKINDEX пуст.")
     return packages
@@ -112,7 +123,7 @@ def get_package(config):
     if config.test_mode:
         raise RepositoryError(
             "Для загрузки из Alpine установите test_mode: false. "
-            "Чтение тестового графа будет добавлено на этапе 3."
+            "Для тестового графа используйте запуск без --direct."
         )
     text = unpack_index(download_index(config.repository))
     return find_package(
