@@ -25,6 +25,7 @@ class Package:
     dependencies: tuple[str, ...]
     provides: tuple[str, ...] = ()
     provider_priority: int = 0
+    install_if: tuple[str, ...] = ()
 
 
 def index_url(repository):
@@ -86,6 +87,7 @@ def parse_record(record):
     return Package(
         fields["P"], fields["V"], dependencies,
         tuple(fields.get("p", "").split()), priority,
+        tuple(fields.get("i", "").split()),
     )
 
 

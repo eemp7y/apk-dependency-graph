@@ -6,7 +6,9 @@ import subprocess
 
 from src.graph import build_graph
 from src.order import loading_order
-from src.repository import download_index, parse_index, unpack_index
+from src.repository import (
+    RepositoryError, download_index, parse_index, unpack_index,
+)
 from src.resolver import Resolver, choose_candidate, package_label
 
 
@@ -67,9 +69,43 @@ def real_apk_order(package):
     return [f"{name}@{version}" for name, version in entries], raw
 
 
-def compare_order(graph, expected, actual):
+def explain_install_if(packages, expected, actual):
+    """Объяснить только дополнения apk с выполненными условиями install_if."""
+    selected = [p for p in packages if package_label(p) in set(expected)]
+    if not selected:
+        return {}
+    resolver = Resolver(selected, selected[0])
+    explained = {}
+    extras = set(actual) - set(expected)
+    positions = {name: index for index, name in enumerate(actual)}
+    for package in packages:
+        label = package_label(package)
+        if label not in extras or not package.install_if:
+            continue
+        try:
+            for condition in package.install_if + package.dependencies:
+                resolver.resolve(condition)
+            required = [
+                package_label(resolver.resolve(item))
+                for item in package.dependencies
+            ]
+        except RepositoryError:
+            continue
+        if any(positions[item] >= positions[label] for item in required):
+            continue
+        conditions = " ".join(package.install_if)
+        explained[label] = f"install_if satisfied by our graph: {conditions}"
+    return explained
+
+
+def compare_order(graph, expected, actual, explained_extras=None):
     """Сравнить наборы, последовательности и зависимости до пользователей."""
     same_set = set(expected) == set(actual) and len(expected) == len(actual)
+    explained_extras = explained_extras or {}
+    filtered = [node for node in actual if node not in explained_extras]
+    explained_set = (
+        set(expected) == set(filtered) and len(expected) == len(filtered)
+    )
     positions = {name: i for i, name in enumerate(actual)}
     violations = [
         f"{child} before {node}"
@@ -92,8 +128,13 @@ def compare_order(graph, expected, actual):
     if not same_set:
         lines.append(f"Only our graph: {sorted(set(expected) - set(actual))}")
         lines.append(f"Only apk: {sorted(set(actual) - set(expected))}")
-        lines.append("Check repository updates and solver provider choices.")
-    return lines, same_set and not violations
+        for package, reason in sorted(explained_extras.items()):
+            lines.append(f"Explained apk addition {package}: {reason}")
+        if explained_set:
+            lines.append("All apk-only packages explained by install_if.")
+        else:
+            lines.append("Unexplained package-set difference: check solver.")
+    return lines, (same_set or explained_set) and not violations
 
 
 def main():
@@ -106,7 +147,9 @@ def main():
     for name in PACKAGES:
         package, graph = our_graph(packages, name)
         actual, raw = real_apk_order(package)
-        lines, valid = compare_order(graph, loading_order(graph), actual)
+        expected = loading_order(graph)
+        explained = explain_install_if(packages, expected, actual)
+        lines, valid = compare_order(graph, expected, actual, explained)
         print(f"\nPackage: {package.name}={package.version}")
         print(raw)
         print("\n".join(lines))
