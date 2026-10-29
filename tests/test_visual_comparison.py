@@ -4,7 +4,10 @@ import unittest
 
 from src.graph import Graph
 from src.repository import Package
-from tools.compare_visualization import compare_edges, parse_dot_edges
+from tools.compare_visualization import (
+    all_provider_graph, compare_edges, compare_with_alternatives,
+    parse_dot_edges,
+)
 
 
 class VisualComparisonTests(unittest.TestCase):
@@ -37,6 +40,28 @@ class VisualComparisonTests(unittest.TestCase):
         self.assertFalse(result["same_edges"])
         self.assertEqual(result["only_ours"], [("A", "B")])
         self.assertEqual(result["only_apk"], [("B", "A")])
+
+    def test_all_provider_model(self):
+        """Модель apk dot включает альтернативы и их потомков."""
+        root = Package("app", "1", ("virtual>=1",))
+        first = Package("first", "1", (), ("virtual=1",), 100)
+        second = Package("second", "2", ("leaf",), ("virtual=2",))
+        leaf = Package("leaf", "1", ())
+        graph = all_provider_graph([root, first, second, leaf], root)
+        self.assertEqual(graph.edges["app@1"], ("first@1", "second@2"))
+        self.assertEqual(graph.edges["second@2"], ("leaf@1",))
+
+    def test_only_verified_alternatives_are_accepted(self):
+        """Необъяснённое ребро не принимается за вариант поставщика."""
+        selected = Graph({"A": ("B",), "B": ()}, {}, [])
+        expanded = Graph({"A": ("B", "C"), "B": (), "C": ()}, {}, [])
+        reference = {("A", "B"), ("A", "C")}
+        result = compare_with_alternatives(selected, expanded, reference)
+        self.assertTrue(result["explained_provider_alternatives"])
+        result = compare_with_alternatives(
+            selected, expanded, reference | {("C", "B")},
+        )
+        self.assertFalse(result["explained_provider_alternatives"])
 
 
 if __name__ == "__main__":

@@ -6,7 +6,9 @@ import re
 import subprocess
 
 from src.repository import download_index, parse_index, unpack_index
-from src.resolver import package_label
+from src.graph import build_graph
+from src.resolver import Resolver, package_label, parse_dependency
+from src.versions import matches_version
 from tools.compare_apk import (
     APK_REPOSITORY, APK_SCRIPT, PACKAGES, REPOSITORY, our_graph,
 )
@@ -61,6 +63,40 @@ def compare_edges(graph, reference):
     }
 
 
+def all_provider_graph(packages, root):
+    """Моделировать apk dot, раскрывающий всех подходящих поставщиков."""
+    resolver = Resolver(packages, root)
+    known = {package_label(root): root}
+
+    def dependencies(label):
+        """Сохранить все удовлетворяющие ограничению варианты provides."""
+        children = []
+        for token in known[label].dependencies:
+            name, operation, version = parse_dependency(token)
+            for candidate, provided in resolver.entries[name]:
+                if matches_version(provided, operation, version):
+                    key = package_label(candidate)
+                    known[key] = candidate
+                    children.append(key)
+        return children
+
+    return build_graph(package_label(root), dependencies, 100)
+
+
+def compare_with_alternatives(graph, expanded, reference):
+    """Принять различие только при точном совпадении модели всех вариантов."""
+    result = compare_edges(graph, reference)
+    full = compare_edges(expanded, reference)
+    result["all_provider_nodes"] = full["our_nodes"]
+    result["all_provider_edges"] = full["our_edges"]
+    result["matches_all_providers"] = full["same_edges"]
+    result["explained_provider_alternatives"] = (
+        not result["same_edges"] and not result["only_ours"]
+        and full["same_edges"]
+    )
+    return result
+
+
 def save_reference(folder, source):
     """Сохранить исходный DOT и изображение, построенное Graphviz."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -81,7 +117,10 @@ def main():
     for name in PACKAGES:
         package, graph = our_graph(packages, name)
         source = real_apk_dot(package)
-        result = compare_edges(graph, parse_dot_edges(source, packages))
+        expanded = all_provider_graph(packages, package)
+        result = compare_with_alternatives(
+            graph, expanded, parse_dot_edges(source, packages),
+        )
         result["version"] = package.version
         results[name] = result
         save_reference(OUTPUT / name, source)
@@ -89,7 +128,9 @@ def main():
     (OUTPUT / "comparison.json").write_text(
         json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8",
     )
-    return 0 if all(item["same_edges"] for item in results.values()) else 1
+    valid = all(item["same_edges"] or item["explained_provider_alternatives"]
+                for item in results.values())
+    return 0 if valid else 1
 
 
 if __name__ == "__main__":
