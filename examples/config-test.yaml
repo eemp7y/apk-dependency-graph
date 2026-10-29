@@ -1,0 +1,5 @@
+package_name: "A"
+repository: "repository.yaml"
+test_mode: true
+package_version: "1.0"
+max_depth: 3
