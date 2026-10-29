@@ -19,7 +19,9 @@ root=$(mktemp -d)
 mkdir -p "$root/etc/apk" "$root/lib/apk/db" "$root/var/cache/apk"
 cp -R /etc/apk/keys "$root/etc/apk/keys"
 printf '%s\n' "$CHECK_REPOSITORY" > "$root/etc/apk/repositories"
-apk --root "$root" --arch x86_64 --initdb update
+: > "$root/etc/apk/world"
+: > "$root/lib/apk/db/installed"
+apk --root "$root" --arch x86_64 update
 apk --root "$root" --arch x86_64 --no-scripts --simulate add "$CHECK_PACKAGE"
 '''
 
