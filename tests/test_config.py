@@ -102,7 +102,7 @@ class ConfigTests(unittest.TestCase):
         self.save()
         output = io.StringIO()
         with redirect_stdout(output):
-            code = main(["--config", str(self.path)])
+            code = main(["--config", str(self.path), "--show-config"])
         self.assertEqual(code, 0)
         for key, value in self.data.items():
             expected = str(value).lower() if type(value) is bool else value
